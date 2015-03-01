@@ -20,7 +20,6 @@ int main(void)
 	int ret;
 	char urlmsg[TCPSIZE];
 	int uhfd = -1;
-	int connect_flag = 0;
 
 	getlocalip();
 
@@ -49,10 +48,7 @@ int main(void)
 		}
 /*########## end #############*/
 
-		connect_flag = 0;
 		while(1) {
-			ALARM_WAKEUP = 2;		// check timeout
-
 			memset(urlmsg, '\0', sizeof(urlmsg));
 			if((ret = read(srvfd, urlmsg, TCPSIZE)) < 0)
 				continue;
@@ -62,26 +58,13 @@ int main(void)
 				break;
 			}
 
-			//printf("###################\nwrite urlmsg=%s", urlmsg);
-
-			// timeout deal
-//			if(ALARM_WAKEUP == 0) {
-//				close(uhfd);
-//				connect_flag = 0;
-//				printf("\n\n################  timeout close  #################\n\n");
-//			}
-//			alarm(0);			// cannel previous alarm
-//			ALARM_WAKEUP = 1;
+			printf("###################\nwrite urlmsg=%s", urlmsg);
 
 			if(strlen(urlmsg) > 0){
 				/* connect uhttpd */
-				if(connect_flag == 0) {
-					uhfd = sock_client(uhIp, fcontrol.uhport);
-					if(uhfd < 0)
-						break;
-
-					connect_flag = 1;
-				}
+				uhfd = sock_client(uhIp, fcontrol.uhport);
+				if(uhfd < 0)
+					break;
 
 				/* write to uhttpd */
 				if((ret = write(uhfd, urlmsg, strlen(urlmsg))) <= 0){		// send TCPSIZE
@@ -96,7 +79,7 @@ int main(void)
 
 				modify_connect_close(urlmsg);
 
-				//printf("*********************\nread urlmsg-%d=%s", uhfd, urlmsg);
+				printf("*********************\nread urlmsg-%d=%s", uhfd, urlmsg);
 
 				/* write back to server */
 				if((ret = write(srvfd, urlmsg, strlen(urlmsg))) <= 0) {
@@ -105,18 +88,9 @@ int main(void)
 					break;
 				}
 
-//				/* response say connect: close */
-//				if(response_close(urlmsg) == CONCLOSE) {
-//					connect_flag = 0;
-//					close(uhfd);
-//					printf("\n\n################  Connection: close  #################\n\n");
-//				}
-
 				close(uhfd);
-				connect_flag = 0;
 			}
 		}
-
 	}
 
 	return 0;
