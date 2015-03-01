@@ -4,8 +4,6 @@
 extern Fcontrol fcontrol;
 char uhIp[17];
 
-#define ERRORIP "cannot find host ip"
-
 void getlocalip(void)
 {
     int sfd, intr;
@@ -15,12 +13,12 @@ void getlocalip(void)
 
     sfd = socket (AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0)
-        return ERRORIP;
+        return ;
 
     ifc.ifc_len = sizeof(buf);
     ifc.ifc_buf = (caddr_t)buf;
     if (ioctl(sfd, SIOCGIFCONF, (char *)&ifc))
-        return ERRORIP;
+        return ;
 
     intr = ifc.ifc_len / sizeof(struct ifreq);
     while (intr-- > 0 && ioctl(sfd, SIOCGIFADDR, (char *)&buf[intr]));
@@ -106,18 +104,13 @@ int sock_client(char *ip, int port)
 	return cfd;
 }
 
-extern int uhfd;
-extern int connect_flag;
-int ALARM_WAKEUP = 0;
+
+int ALARM_WAKEUP = 1;
 void timeout_handler(int signo)
 {
-	if(signo == SIGALRM) {
-		if(ALARM_WAKEUP == 0) {
-			close(uhfd);
-			connect_flag = 0;
-			printf("\n\n################  timeout #################\n\n");
-		}
-	}
+	if(signo == SIGALRM)
+		if(ALARM_WAKEUP == 2)
+			ALARM_WAKEUP = 0;
 }
 
 /* analyse response url data, judge connect */
@@ -146,24 +139,46 @@ int response_close(char urlmsg[])
 	}
 
 	/* timeout */
-	p = strstr(urlmsg, "Keep-Alive:");
-	if(p != NULL) {
-		p = strstr(p, "timeout");
-		if(p != NULL) {
-			p++;	// drop '='
-			i = 0;
-			while(*p != '\n')
-				timebuf[i++] = *(p++);
-			timebuf[i] = '\0';
+//	p = strstr(urlmsg, "Keep-Alive:");
+//	if(p != NULL) {
+//		p = strstr(p, "timeout");
+//		if(p != NULL) {
+//			while(*(p++) != '=');	// drop '='
 
-			time = atoi(timebuf);
+//			i = 0;
+//			while(*p != '\n')
+//				timebuf[i++] = *(p++);
+//			timebuf[i] = '\0';
+
+//			time = atoi(timebuf);
 
 //			/* set a alarm */
 //			signal(SIGALRM, timeout_handler);
 //			alarm(time);
-//			ALARM_WAKEUP = 0;
-		}
-	}
+//		}
+//	}
 
 	return ret;
+}
+
+/* change http1.1 long connect, Connection: close */
+void modify_connect_close(char urlmsg[])
+{
+	char *p, *q;
+	char tempmsg[TCPSIZE];
+
+	strcpy(tempmsg, urlmsg);
+
+	p = strstr(tempmsg, "Connection: Keep-Alive");		// request: keep-alive; repose: Keep-Alive
+	if(p != NULL) {
+		q = p;
+		while(*(q++) != '\n');
+	} else {
+		return ;
+	}
+
+	memset(urlmsg, '\0', TCPSIZE);
+	strncpy(urlmsg, tempmsg, p-tempmsg);
+	strcat(urlmsg, "Connection: Close\n");
+	strcat(urlmsg, q);
 }

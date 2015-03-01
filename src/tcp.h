@@ -33,5 +33,6 @@ int getlocalmac(void);
 ssize_t tcp_read(int fd, void *buf, size_t count);
 int sock_client(char *ip, int port);
 int response_close(char urlmsg[]);
+void modify_connect_close(char urlmsg[]);
 
 #endif
