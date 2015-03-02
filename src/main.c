@@ -58,7 +58,7 @@ int main(void)
 				break;
 			}
 
-			printf("###################\nwrite urlmsg=%s", urlmsg);
+			//printf("###################\nwrite urlmsg=%s", urlmsg);
 
 			if(strlen(urlmsg) > 0){
 				/* connect uhttpd */
@@ -73,16 +73,18 @@ int main(void)
 
 				/* read form uhttpd */
 				memset(urlmsg, '\0', sizeof(urlmsg));
-				if((ret = read(uhfd, urlmsg, TCPSIZE)) <= 0){		// read do not all TCPSIZE
+				if((ret = http_read(uhfd, urlmsg, TCPSIZE)) <= 0){		// read do not all TCPSIZE
 					close(uhfd);
 				}
+				printf("@@@@@@read-len = %d\n", ret);
 
-				modify_connect_close(urlmsg);
+				//modify_connect_close(urlmsg);
+				//modify_http_head(urlmsg);
 
-				printf("*********************\nread urlmsg-%d=%s", uhfd, urlmsg);
+				//printf("*********************\nread urlmsg-%d=%s", uhfd, urlmsg);
 
 				/* write back to server */
-				if((ret = write(srvfd, urlmsg, strlen(urlmsg))) <= 0) {
+				if((ret = http_write(srvfd, urlmsg, strlen(urlmsg))) <= 0) {
 					close(srvfd);
 					close(uhfd);
 					break;

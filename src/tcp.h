@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <signal.h>
 #include <unistd.h>
+#include <errno.h>
 
 
 #define TCPSIZE 65535
@@ -30,9 +31,11 @@ typedef struct fcon {
 
 void getlocalip(void);
 int getlocalmac(void);
-ssize_t tcp_read(int fd, void *buf, size_t count);
+ssize_t http_read(int fd, char buf[], size_t count);
+ssize_t http_write(int fd, char buf[], size_t count);
 int sock_client(char *ip, int port);
 int response_close(char urlmsg[]);
 void modify_connect_close(char urlmsg[]);
+void modify_http_head(char urlmsg[]);
 
 #endif

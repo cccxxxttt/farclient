@@ -55,27 +55,167 @@ int getlocalmac(void)
 	return 0;
 }
 
-ssize_t tcp_read(int fd, void *buf, size_t count)
+int read_line(int sockfd, char buf[])
 {
-	int ret, len;
-	char tmp[BUFSIZE];
+	char *temp=buf;
+	char c;
+	int n;
 
-	len = count;
-	while(len > 0) {
-		memset(tmp, '\0', sizeof(tmp));
-
-		if(len > BUFSIZE) {
-			if((ret = read(fd, tmp, BUFSIZE)) < 0)
-				continue;
-		}
+	while(1)
+	{
+		n=read(sockfd,&c,1);
+		if(n<0)
+			return -1;
 		else {
-			if((ret = read(fd, tmp, len)) < 0)
-				continue;
+			*temp++=c;
+
+			if(c=='\n')
+				break;
+		}
+	}
+	*temp = '\0';
+
+	return strlen(buf);
+}
+
+# if 0
+// 如果存在Transfer-Encoding（重点是chunked），则在header中不能有Content-Length，有也会被忽视。
+// http_read() 函数无效
+ssize_t http_read(int fd, char buf[], size_t count)
+{
+	FILE *fp;
+	char *p, *q;
+	int ret, len;
+	int textLenght;
+	char lenbuf[5];
+	char lineBuf[BUFSIZE], textBuf[BUFSIZE];
+
+#if 0
+	/* read head msg */
+	fp = fdopen(fd, "r");
+	if(fp == NULL) {
+		fprintf(stderr,"%s: fdopen(s)\n",strerror(errno));
+		return -1;
+	}
+	setlinebuf(fp);
+
+	while(1) {
+		memset(lineBuf, '\0', BUFSIZE);
+		p = fgets(lineBuf, BUFSIZE, fp);
+		if(p != NULL)
+			strcat(buf, lineBuf);
+
+		if(strncmp(lineBuf, "Content-Length:", 15) == 0) {
+			q = lineBuf + 15;
+			while(*(q++) != ' ');	// drop ' '
+
+			int i = 0;
+			while(*q != '\r') {
+				lenbuf[i++] = *(q++);
+			}
+			lenbuf[i] = '\0';
+
+			textLenght = atoi(lenbuf);
+			printf("lenbuf=%s, textLenght = %d\n", lenbuf, textLenght);
 		}
 
-		len -= ret;
-		strcat(buf, tmp);
+		if(strcmp(lineBuf, "\r\n") == 0)		// head end
+			break;
 	}
+	fclose(fp);
+#else
+
+	/* read head msg */
+	while(1) {
+		ret = read_line(fd, lineBuf);
+		if(ret < 0)
+			return -1;
+		else
+			strcat(buf, lineBuf);
+
+		if(strncmp(lineBuf, "Content-Length:", 15) == 0) {
+			q = lineBuf + 15;
+			while(*(q++) != ' ');	// drop ' '
+
+			int i = 0;
+			while(*q != '\r') {
+				lenbuf[i++] = *(q++);
+			}
+			lenbuf[i] = '\0';
+
+			textLenght = atoi(lenbuf);
+		}
+
+		if(strcmp(lineBuf, "\r\n") == 0)		// head end
+			break;
+	}
+#endif
+
+	/* read text */
+	if(textLenght > 0) {
+		len = textLenght;
+		while(len > 0) {
+			memset(textBuf, '\0', BUFSIZE);
+			if(len > BUFSIZE)
+				ret = read(fd, textBuf, BUFSIZE);
+			else
+				ret = read(fd, textBuf, len);
+
+			len -= ret;
+
+			if(ret > 0)
+				strcat(buf, textBuf);
+			else if(ret < 0)
+				continue;
+			else
+				break;
+
+			printf("textbuf=%s, ret=%d\n", textBuf, ret);
+		}
+	}
+
+	return 0;
+
+}
+
+#else
+
+// 如果采用短连接，则直接可以通过服务器关闭连接来确定消息的传输长度
+ssize_t http_read(int fd, char buf[], size_t count)
+{
+	int ret;
+	char temp[BUFSIZE];
+
+	while(1) {
+		memset(temp, '\0', BUFSIZE);
+		ret = read(fd, temp, BUFSIZE);
+
+		if(ret > 0)
+			strcat(buf, temp);
+		if(ret <= 0)
+			break;
+	}
+
+	return strlen(buf);
+}
+
+#endif
+
+ssize_t http_write(int fd, char buf[], size_t count)
+{
+	int ret, len = 0;
+	char temp[BUFSIZE];
+
+	/* send count first */
+	sprintf(temp, "UrlSize = %d\r\n", count);
+	ret = write(fd, temp, strlen(temp));
+	if(ret <= 0)
+		return -1;
+
+	//printf("urlsize = %s\n", temp);
+
+	/* send reponse */
+	ret = write(fd, buf, strlen(buf));
 
 	return ret;
 }
@@ -166,19 +306,43 @@ void modify_connect_close(char urlmsg[])
 {
 	char *p, *q;
 	char tempmsg[TCPSIZE];
+	char *src = "Connection: Keep-Alive";
+	char *dst = "Connection: close";
 
 	strcpy(tempmsg, urlmsg);
 
-	p = strstr(tempmsg, "Connection: Keep-Alive");		// request: keep-alive; repose: Keep-Alive
+	p = strstr(tempmsg, src);		// request: keep-alive; repose: Keep-Alive
 	if(p != NULL) {
-		q = p;
-		while(*(q++) != '\n');
+		q = p + strlen(src);
 	} else {
 		return ;
 	}
 
 	memset(urlmsg, '\0', TCPSIZE);
 	strncpy(urlmsg, tempmsg, p-tempmsg);
-	strcat(urlmsg, "Connection: Close\n");
+	strcat(urlmsg, dst);
+	strcat(urlmsg, q);
+}
+
+
+void modify_http_head(char urlmsg[])
+{
+	char *p, *q;
+	char tempmsg[TCPSIZE];
+	char *src = "HTTP/1.1";
+	char *dst = "HTTP/1.0";
+
+	strcpy(tempmsg, urlmsg);
+
+	p = strstr(tempmsg, src);		// strstr can find first HTTP/1.1
+	if(p != NULL) {
+		q = p + strlen(src);
+	} else {
+		return ;
+	}
+
+	memset(urlmsg, '\0', TCPSIZE);
+	strncpy(urlmsg, tempmsg, p-tempmsg);
+	strcat(urlmsg, dst);
 	strcat(urlmsg, q);
 }
