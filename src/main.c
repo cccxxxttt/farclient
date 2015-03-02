@@ -2,13 +2,13 @@
 
 
 Fcontrol fcontrol = {
-	//.srvIp   = "192.168.3.254",
-	.srvIp   = "192.168.0.130",
+	.srvIp   = "192.168.3.254",
+	//.srvIp   = "192.168.0.130",
 	.srvPort = 9999,
 	.macName = "eth1",
 
-	//.uhport  = 52360,
-	.uhport  = 80,
+	.uhport  = 52360,
+	//.uhport  = 80,
 };
 
 extern char uhIp[17];
@@ -58,6 +58,7 @@ int main(void)
 				break;
 			}
 
+			printf("\npc-%d\n", srvfd);
 			//printf("###################\nwrite urlmsg=%s", urlmsg);
 
 			if(strlen(urlmsg) > 0){
@@ -76,7 +77,7 @@ int main(void)
 				if((ret = http_read(uhfd, urlmsg, TCPSIZE)) <= 0){		// read do not all TCPSIZE
 					close(uhfd);
 				}
-				printf("@@@@@@read-len = %d\n", ret);
+				printf("read-len = %d\n", ret);
 
 				//modify_connect_close(urlmsg);
 				//modify_http_head(urlmsg);

@@ -63,13 +63,13 @@ int read_line(int sockfd, char buf[])
 
 	while(1)
 	{
-		n=read(sockfd,&c,1);
-		if(n<0)
+		n = read(sockfd, &c, 1);
+		if(n < 0)
 			return -1;
 		else {
-			*temp++=c;
+			*temp++ = c;
 
-			if(c=='\n')
+			if(c == '\n')
 				break;
 		}
 	}
@@ -78,52 +78,17 @@ int read_line(int sockfd, char buf[])
 	return strlen(buf);
 }
 
-# if 0
-// 如果存在Transfer-Encoding（重点是chunked），则在header中不能有Content-Length，有也会被忽视。
-// http_read() 函数无效
+
+// Transfer-Encoding: chunked ;  chunked解码判断tcp结束
 ssize_t http_read(int fd, char buf[], size_t count)
 {
 	FILE *fp;
 	char *p, *q;
 	int ret, len;
-	int textLenght;
-	char lenbuf[5];
+	int chunk_flag = 0, chunkSize;
+	int content_flag = 0, textLength, i;
+	char size[6];
 	char lineBuf[BUFSIZE], textBuf[BUFSIZE];
-
-#if 0
-	/* read head msg */
-	fp = fdopen(fd, "r");
-	if(fp == NULL) {
-		fprintf(stderr,"%s: fdopen(s)\n",strerror(errno));
-		return -1;
-	}
-	setlinebuf(fp);
-
-	while(1) {
-		memset(lineBuf, '\0', BUFSIZE);
-		p = fgets(lineBuf, BUFSIZE, fp);
-		if(p != NULL)
-			strcat(buf, lineBuf);
-
-		if(strncmp(lineBuf, "Content-Length:", 15) == 0) {
-			q = lineBuf + 15;
-			while(*(q++) != ' ');	// drop ' '
-
-			int i = 0;
-			while(*q != '\r') {
-				lenbuf[i++] = *(q++);
-			}
-			lenbuf[i] = '\0';
-
-			textLenght = atoi(lenbuf);
-			printf("lenbuf=%s, textLenght = %d\n", lenbuf, textLenght);
-		}
-
-		if(strcmp(lineBuf, "\r\n") == 0)		// head end
-			break;
-	}
-	fclose(fp);
-#else
 
 	/* read head msg */
 	while(1) {
@@ -133,27 +98,79 @@ ssize_t http_read(int fd, char buf[], size_t count)
 		else
 			strcat(buf, lineBuf);
 
+		if(strcmp(lineBuf, "Transfer-Encoding: chunked\r\n") == 0)
+			chunk_flag = 1;
+
 		if(strncmp(lineBuf, "Content-Length:", 15) == 0) {
-			q = lineBuf + 15;
-			while(*(q++) != ' ');	// drop ' '
+			p = lineBuf + 15;
+			while(*p++ != ' ');
 
-			int i = 0;
-			while(*q != '\r') {
-				lenbuf[i++] = *(q++);
-			}
-			lenbuf[i] = '\0';
+			i = 0;
+			while(*p != '\r')
+				size[i++] = *p++;
+			size[i] = '\0';
+			textLength = atoi(size);
 
-			textLenght = atoi(lenbuf);
+			//printf("size=%s, textLength = %d\n", size, textLength);
+
+			content_flag = 1;
 		}
 
 		if(strcmp(lineBuf, "\r\n") == 0)		// head end
 			break;
 	}
-#endif
 
-	/* read text */
-	if(textLenght > 0) {
-		len = textLenght;
+	/* read chunked text */
+	if(chunk_flag == 1) {
+		while(1) {
+			/* 1. chunk-size */
+			ret = read_line(fd, lineBuf);
+			if(ret < 0)
+				return -1;
+			else
+				strcat(buf, lineBuf);
+
+			/* 3. 0\r\n */
+			if(strcmp(lineBuf, "0\r\n") == 0) {
+				while(1) {
+					ret = read_line(fd, lineBuf);
+					if(ret < 0)
+						return -1;
+					else
+						strcat(buf, lineBuf);
+
+					/* 4-end. \r\n */
+					if(strcmp(lineBuf, "\r\n") == 0)
+						break;
+				}
+
+				break;	// end of urlmsg
+			}
+			else
+				chunkSize = atoi(lineBuf);
+
+			/* 2. chunk-data */
+			len = chunkSize;
+			while(len > 0) {
+				memset(textBuf, '\0', BUFSIZE);
+				if(len > BUFSIZE)
+					ret = read(fd, textBuf, BUFSIZE);
+				else
+					ret = read(fd, textBuf, len);
+
+				len -= ret;
+
+				if(ret > 0)
+					strcat(buf, textBuf);
+				else if(ret <= 0)
+					break;
+			}
+		}
+	}
+
+	/* no chunk code */
+	else if(content_flag == 1) {
+		len = textLength;
 		while(len > 0) {
 			memset(textBuf, '\0', BUFSIZE);
 			if(len > BUFSIZE)
@@ -165,41 +182,28 @@ ssize_t http_read(int fd, char buf[], size_t count)
 
 			if(ret > 0)
 				strcat(buf, textBuf);
-			else if(ret < 0)
-				continue;
-			else
+			else if(ret <= 0)
 				break;
-
-			printf("textbuf=%s, ret=%d\n", textBuf, ret);
 		}
 	}
 
-	return 0;
+	/* server close mean end */
+	else {
+		while(1) {
+			memset(textBuf, '\0', BUFSIZE);
+			ret = read(fd, textBuf, BUFSIZE);
 
-}
-
-#else
-
-// 如果采用短连接，则直接可以通过服务器关闭连接来确定消息的传输长度
-ssize_t http_read(int fd, char buf[], size_t count)
-{
-	int ret;
-	char temp[BUFSIZE];
-
-	while(1) {
-		memset(temp, '\0', BUFSIZE);
-		ret = read(fd, temp, BUFSIZE);
-
-		if(ret > 0)
-			strcat(buf, temp);
-		if(ret <= 0)
-			break;
+			if(ret > 0)
+				strcat(buf, textBuf);
+			if(ret <= 0)
+				break;
+		}
 	}
 
 	return strlen(buf);
+
 }
 
-#endif
 
 ssize_t http_write(int fd, char buf[], size_t count)
 {
