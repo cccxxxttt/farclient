@@ -90,6 +90,7 @@ ssize_t http_read(int fd, char buf[], size_t count)
 	char size[6];
 	char lineBuf[BUFSIZE], textBuf[BUFSIZE];
 
+#if 0
 	/* read head msg */
 	while(1) {
 		ret = read_line(fd, lineBuf);
@@ -186,9 +187,9 @@ ssize_t http_read(int fd, char buf[], size_t count)
 				break;
 		}
 	}
-
+#endif
 	/* server close mean end */
-	else {
+	//else {
 		while(1) {
 			memset(textBuf, '\0', BUFSIZE);
 			ret = read(fd, textBuf, BUFSIZE);
@@ -198,7 +199,7 @@ ssize_t http_read(int fd, char buf[], size_t count)
 			if(ret <= 0)
 				break;
 		}
-	}
+	//}
 
 	return strlen(buf);
 
