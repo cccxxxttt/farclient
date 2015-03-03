@@ -38,4 +38,7 @@ int response_close(char urlmsg[]);
 void modify_connect_close(char urlmsg[]);
 void modify_http_head(char urlmsg[]);
 
+int server_to_route(int srvfd, int uhfd);
+int route_to_server(int srvfd, int uhfd);
+
 #endif

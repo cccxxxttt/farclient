@@ -79,137 +79,10 @@ int read_line(int sockfd, char buf[])
 }
 
 
-// Transfer-Encoding: chunked ;  chunkedΩ‚¬Î≈–∂œtcpΩ· ¯
-ssize_t http_read(int fd, char buf[], size_t count)
-{
-	FILE *fp;
-	char *p, *q;
-	int ret, len;
-	int chunk_flag = 0, chunkSize;
-	int content_flag = 0, textLength, i;
-	char size[6];
-	char lineBuf[BUFSIZE], textBuf[BUFSIZE];
-
-#if 0
-	/* read head msg */
-	while(1) {
-		ret = read_line(fd, lineBuf);
-		if(ret < 0)
-			return -1;
-		else
-			strcat(buf, lineBuf);
-
-		if(strcmp(lineBuf, "Transfer-Encoding: chunked\r\n") == 0)
-			chunk_flag = 1;
-
-		if(strncmp(lineBuf, "Content-Length:", 15) == 0) {
-			p = lineBuf + 15;
-			while(*p++ != ' ');
-
-			i = 0;
-			while(*p != '\r')
-				size[i++] = *p++;
-			size[i] = '\0';
-			textLength = atoi(size);
-
-			//printf("size=%s, textLength = %d\n", size, textLength);
-
-			content_flag = 1;
-		}
-
-		if(strcmp(lineBuf, "\r\n") == 0)		// head end
-			break;
-	}
-
-	/* read chunked text */
-	if(chunk_flag == 1) {
-		while(1) {
-			/* 1. chunk-size */
-			ret = read_line(fd, lineBuf);
-			if(ret < 0)
-				return -1;
-			else
-				strcat(buf, lineBuf);
-
-			/* 3. 0\r\n */
-			if(strcmp(lineBuf, "0\r\n") == 0) {
-				while(1) {
-					ret = read_line(fd, lineBuf);
-					if(ret < 0)
-						return -1;
-					else
-						strcat(buf, lineBuf);
-
-					/* 4-end. \r\n */
-					if(strcmp(lineBuf, "\r\n") == 0)
-						break;
-				}
-
-				break;	// end of urlmsg
-			}
-			else
-				chunkSize = atoi(lineBuf);
-
-			/* 2. chunk-data */
-			len = chunkSize;
-			while(len > 0) {
-				memset(textBuf, '\0', BUFSIZE);
-				if(len > BUFSIZE)
-					ret = read(fd, textBuf, BUFSIZE);
-				else
-					ret = read(fd, textBuf, len);
-
-				len -= ret;
-
-				if(ret > 0)
-					strcat(buf, textBuf);
-				else if(ret <= 0)
-					break;
-			}
-		}
-	}
-
-	/* no chunk code */
-	else if(content_flag == 1) {
-		len = textLength;
-		while(len > 0) {
-			memset(textBuf, '\0', BUFSIZE);
-			if(len > BUFSIZE)
-				ret = read(fd, textBuf, BUFSIZE);
-			else
-				ret = read(fd, textBuf, len);
-
-			len -= ret;
-
-			if(ret > 0)
-				strcat(buf, textBuf);
-			else if(ret <= 0)
-				break;
-		}
-	}
-#endif
-	/* server close mean end */
-	//else {
-		while(1) {
-			memset(textBuf, '\0', BUFSIZE);
-			ret = read(fd, textBuf, BUFSIZE);
-
-			if(ret > 0)
-				strcat(buf, textBuf);
-			if(ret <= 0)
-				break;
-		}
-	//}
-
-	return strlen(buf);
-
-}
-
-
 ssize_t http_write(int fd, char buf[], size_t count)
 {
-	int ret, len = 0;
-	char temp[BUFSIZE];
+	int ret;
+	char temp[TCPSIZE];
 
 	/* send count first */
 	sprintf(temp, "UrlSize = %d\r\n", count);
@@ -217,10 +90,10 @@ ssize_t http_write(int fd, char buf[], size_t count)
 	if(ret <= 0)
 		return -1;
 
-	//printf("urlsize = %s\n", temp);
-
 	/* send reponse */
-	ret = write(fd, buf, strlen(buf));
+	ret = write(fd, buf, count);
+
+	//printf("write-len = %d\n", strlen(buf));
 
 	return ret;
 }
@@ -259,6 +132,7 @@ void timeout_handler(int signo)
 }
 
 /* analyse response url data, judge connect */
+#if 0
 int response_close(char urlmsg[])
 {
 	char *p = NULL, *q = NULL;
@@ -284,70 +158,129 @@ int response_close(char urlmsg[])
 	}
 
 	/* timeout */
-//	p = strstr(urlmsg, "Keep-Alive:");
-//	if(p != NULL) {
-//		p = strstr(p, "timeout");
-//		if(p != NULL) {
-//			while(*(p++) != '=');	// drop '='
+	p = strstr(urlmsg, "Keep-Alive:");
+	if(p != NULL) {
+		p = strstr(p, "timeout");
+		if(p != NULL) {
+			while(*(p++) != '=');	// drop '='
 
-//			i = 0;
-//			while(*p != '\n')
-//				timebuf[i++] = *(p++);
-//			timebuf[i] = '\0';
+			i = 0;
+			while(*p != '\n')
+				timebuf[i++] = *(p++);
+			timebuf[i] = '\0';
 
-//			time = atoi(timebuf);
+			time = atoi(timebuf);
 
-//			/* set a alarm */
-//			signal(SIGALRM, timeout_handler);
-//			alarm(time);
-//		}
-//	}
+			/* set a alarm */
+			signal(SIGALRM, timeout_handler);
+			alarm(time);
+		}
+	}
 
 	return ret;
 }
+#endif
 
-/* change http1.1 long connect, Connection: close */
-void modify_connect_close(char urlmsg[])
+ssize_t pc_read(int fd, char buf[])
 {
-	char *p, *q;
-	char tempmsg[TCPSIZE];
-	char *src = "Connection: Keep-Alive";
-	char *dst = "Connection: close";
+	int ret, i;
+	unsigned long urlsize, retsize;
+	char msgsize[TCPSIZE], size[6];
+	char temp[TCPSIZE];
+	char *p;
 
-	strcpy(tempmsg, urlmsg);
+	ret = read_line(fd, msgsize);
+	if(ret <= 0)
+		return ret;
 
-	p = strstr(tempmsg, src);		// request: keep-alive; repose: Keep-Alive
-	if(p != NULL) {
-		q = p + strlen(src);
-	} else {
-		return ;
+	/* get urlmsg size: UrlSize = xxx\r\n */
+	i = 0;
+	p = msgsize + strlen("UrlSize = ");
+	while(*p != '\r')
+		size[i++] = *(p++);
+	size[i] = '\0';
+	urlsize = atoi(size);
+	retsize = urlsize;
+
+	/* read url msg */
+	if(urlsize > 0) {
+		while(urlsize > 0) {
+			memset(temp, '\0', TCPSIZE);
+
+			if(urlsize > TCPSIZE)
+				ret = read(fd, temp, TCPSIZE);
+			else
+				ret = read(fd, temp, urlsize);
+
+			urlsize -= ret;
+
+			if(ret > 0)
+				strcat(buf, temp);
+			else if(ret == 0)
+				break;
+		}
 	}
 
-	memset(urlmsg, '\0', TCPSIZE);
-	strncpy(urlmsg, tempmsg, p-tempmsg);
-	strcat(urlmsg, dst);
-	strcat(urlmsg, q);
+	return retsize;
 }
 
-
-void modify_http_head(char urlmsg[])
+int server_to_route(int srvfd, int uhfd)
 {
-	char *p, *q;
-	char tempmsg[TCPSIZE];
-	char *src = "HTTP/1.1";
-	char *dst = "HTTP/1.0";
+	int ret;
+	char urlmsg[TCPSIZE];
 
-	strcpy(tempmsg, urlmsg);
+	while(1) {
+		memset(urlmsg, '\0', sizeof(urlmsg));
+		if((ret = pc_read(srvfd, urlmsg)) < 0)
+			return -1;
 
-	p = strstr(tempmsg, src);		// strstr can find first HTTP/1.1
-	if(p != NULL) {
-		q = p + strlen(src);
-	} else {
-		return ;
+		if(ret <= 0)
+			return -1;
+
+		if(strcmp(urlmsg, "end\r\n") == 0)
+			break;
+
+		//printf("###################\nwrite urlmsg=%s\n", urlmsg);
+
+		/* write to uhttpd */
+		if((ret = write(uhfd, urlmsg, ret)) <= 0)
+			return -2;
 	}
 
-	memset(urlmsg, '\0', TCPSIZE);
-	strncpy(urlmsg, tempmsg, p-tempmsg);
-	strcat(urlmsg, dst);
-	strcat(urlmsg, q);
+	printf("pc-%d\n", srvfd);
+
+	return 0;
+}
+
+int route_to_server(int srvfd, int uhfd)
+{
+	int ret;
+	char urlmsg[TCPSIZE];
+	int len = 0;
+
+	/* server close mean end */
+	while(1) {
+		/* read form uhttpd */
+		memset(urlmsg, '\0', TCPSIZE);
+		ret = read(uhfd, urlmsg, TCPSIZE);
+
+		if(ret <= 0)
+			break;
+
+		len += ret;
+
+		//printf("\nread urlmsg-%d=%s\n", ret, urlmsg);
+
+		/* write back to server */
+		if((ret = http_write(srvfd, urlmsg, ret)) <= 0)
+			return -1;
+	}
+
+	printf("read-len = %d\n", len);
+
+	/* send end msg */
+	if((ret = http_write(srvfd, "end\r\n", strlen("end\r\n"))) <= 0)
+		return -1;
+
+	return 0;
 }

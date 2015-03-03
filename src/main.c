@@ -18,7 +18,7 @@ int main(void)
 {
 	int srvfd;
 	int ret;
-	char urlmsg[TCPSIZE];
+	char sendmsg[BUFSIZE];
 	int uhfd = -1;
 
 	getlocalip();
@@ -38,7 +38,6 @@ int main(void)
 /*########## send message first #############*/
 		getlocalmac();
 
-		char sendmsg[BUFSIZE];
 		memset(sendmsg, 0, BUFSIZE);
 		sprintf(sendmsg, "%s\r\n",
 			fcontrol.mac);
@@ -49,50 +48,22 @@ int main(void)
 /*########## end #############*/
 
 		while(1) {
-			memset(urlmsg, '\0', sizeof(urlmsg));
-			if((ret = read(srvfd, urlmsg, TCPSIZE)) < 0)
+			/* connect uhttpd */
+			uhfd = sock_client(uhIp, fcontrol.uhport);
+			if(uhfd < 0)
 				continue;
 
-			if(ret == 0) {
-				close(srvfd);
+			/* read from server, write to route */
+			ret = server_to_route(srvfd, uhfd);
+			if(ret < 0)
 				break;
-			}
 
-			printf("\npc-%d\n", srvfd);
-			//printf("###################\nwrite urlmsg=%s", urlmsg);
+			/* read from route, write to server */
+			ret = route_to_server(srvfd, uhfd);
+			if(ret < 0)
+				break;
 
-			if(strlen(urlmsg) > 0){
-				/* connect uhttpd */
-				uhfd = sock_client(uhIp, fcontrol.uhport);
-				if(uhfd < 0)
-					break;
-
-				/* write to uhttpd */
-				if((ret = write(uhfd, urlmsg, strlen(urlmsg))) <= 0){		// send TCPSIZE
-					close(uhfd);
-				}
-
-				/* read form uhttpd */
-				memset(urlmsg, '\0', sizeof(urlmsg));
-				if((ret = http_read(uhfd, urlmsg, TCPSIZE)) <= 0){		// read do not all TCPSIZE
-					close(uhfd);
-				}
-
-				//modify_connect_close(urlmsg);
-				//modify_http_head(urlmsg);
-
-				//printf("read-len = %d\n", ret);
-				//printf("*********************\nread urlmsg-%d=%s", uhfd, urlmsg);
-
-				/* write back to server */
-				if((ret = http_write(srvfd, urlmsg, strlen(urlmsg))) <= 0) {
-					close(srvfd);
-					close(uhfd);
-					break;
-				}
-
-				close(uhfd);
-			}
+			close(uhfd);
 		}
 	}
 
