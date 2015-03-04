@@ -184,10 +184,11 @@ int response_close(char urlmsg[])
 ssize_t pc_read(int fd, char buf[])
 {
 	int ret, i;
-	unsigned long urlsize, retsize;
+	unsigned long urlsize, retsize = 0;
 	char msgsize[TCPSIZE], size[6];
 	char temp[TCPSIZE];
 	char *p;
+	int firstFlag = 0;
 
 	ret = read_line(fd, msgsize);
 	if(ret <= 0)
@@ -200,25 +201,40 @@ ssize_t pc_read(int fd, char buf[])
 		size[i++] = *(p++);
 	size[i] = '\0';
 	urlsize = atoi(size);
-	retsize = urlsize;
 
 	/* read url msg */
-	if(urlsize > 0) {
-		while(urlsize > 0) {
-			memset(temp, '\0', TCPSIZE);
+	while(urlsize > 0) {
+		memset(temp, '\0', TCPSIZE);
 
-			if(urlsize > TCPSIZE)
-				ret = read(fd, temp, TCPSIZE);
-			else
-				ret = read(fd, temp, urlsize);
+		if(urlsize > TCPSIZE)
+			ret = read(fd, temp, TCPSIZE);
+		else
+			ret = read(fd, temp, urlsize);
 
-			urlsize -= ret;
+		if(ret > 0)
+			strcat(buf, temp);
+		else if(ret == 0)
+			return 0;
+		else
+			break;
 
-			if(ret > 0)
-				strcat(buf, temp);
-			else if(ret == 0)
-				break;
+		urlsize -= ret;
+		retsize += ret;
+
+#if 1
+		/* debug use: get the first head */
+		if(firstFlag == 0) {
+			p = strstr(temp, "HTTP/1.0");
+			if(p != NULL) {
+				while(*(p++) != '\n');		// zhu: post data don't has  \r\n
+				*p = '\0';
+
+				printf("pc-%d:  %s", fd, temp);
+			}
+
+			firstFlag = 1;
 		}
+#endif
 	}
 
 	return retsize;
@@ -231,23 +247,16 @@ int server_to_route(int srvfd, int uhfd)
 
 	while(1) {
 		memset(urlmsg, '\0', sizeof(urlmsg));
-		if((ret = pc_read(srvfd, urlmsg)) < 0)
-			return -1;
-
-		if(ret <= 0)
+		if((ret = pc_read(srvfd, urlmsg)) <= 0)
 			return -1;
 
 		if(strcmp(urlmsg, "end\r\n") == 0)
 			break;
 
-		//printf("###################\nwrite urlmsg=%s\n", urlmsg);
-
 		/* write to uhttpd */
 		if((ret = write(uhfd, urlmsg, ret)) <= 0)
 			return -2;
 	}
-
-	printf("pc-%d\n", srvfd);
 
 	return 0;
 }
@@ -255,8 +264,38 @@ int server_to_route(int srvfd, int uhfd)
 int route_to_server(int srvfd, int uhfd)
 {
 	int ret;
-	char urlmsg[TCPSIZE];
-	int len = 0;
+	char urlmsg[TCPSIZE], lineBuf[BUFSIZE];
+	int retsize = 0;
+
+	/* read head msg */
+#if 1
+		/* debug use */
+		ret = read_line(uhfd, lineBuf);
+		if(ret <= 0)
+			return ret;
+
+		strcat(urlmsg, lineBuf);
+		retsize += ret;
+
+		printf("route-%d:  %s", uhfd, urlmsg);
+#endif
+
+	while(1) {
+		ret = read_line(uhfd, lineBuf);
+		if(ret < 0)
+			return -1;
+		else
+			strcat(urlmsg, lineBuf);
+
+		retsize += ret;
+
+		if(strcmp(lineBuf, "\r\n") == 0)		// head end
+			break;
+	}
+
+	/* write back to server */
+	if((ret = http_write(srvfd, urlmsg, retsize)) <= 0)
+		return -1;
 
 	/* server close mean end */
 	while(1) {
@@ -267,8 +306,11 @@ int route_to_server(int srvfd, int uhfd)
 		if(ret <= 0)
 			break;
 
-		len += ret;
+		retsize += ret;
 
+		printf("route-%d-%d\n", ret, strlen(urlmsg));
+		if(ret != strlen(urlmsg))
+			printf("urlmsg=%s\n", urlmsg);
 		//printf("\nread urlmsg-%d=%s\n", ret, urlmsg);
 
 		/* write back to server */
@@ -276,7 +318,7 @@ int route_to_server(int srvfd, int uhfd)
 			return -1;
 	}
 
-	printf("read-len = %d\n", len);
+	printf("read-len = %d\n\n", retsize);
 
 	/* send end msg */
 	if((ret = http_write(srvfd, "end\r\n", strlen("end\r\n"))) <= 0)
