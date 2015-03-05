@@ -59,13 +59,13 @@ int read_line(int sockfd, char buf[])
 {
 	char *temp=buf;
 	char c;
-	int n;
+	int ret;
 
 	while(1)
 	{
-		n = read(sockfd, &c, 1);
-		if(n < 0)
-			return -1;
+		ret = read(sockfd, &c, 1);
+		if(ret <= 0)
+			return ret;
 		else {
 			*temp++ = c;
 
@@ -88,10 +88,12 @@ ssize_t http_write(int fd, char buf[], size_t count)
 	sprintf(temp, "UrlSize = %d\r\n", count);
 	ret = write(fd, temp, strlen(temp));
 	if(ret <= 0)
-		return -1;
+		return ret;
 
 	/* send reponse */
 	ret = write(fd, buf, count);
+	if(ret <= 0)
+		return ret;
 
 	//printf("write-len = %d\n", strlen(buf));
 
@@ -213,10 +215,8 @@ ssize_t pc_read(int fd, char buf[])
 
 		if(ret > 0)
 			strcat(buf, temp);
-		else if(ret == 0)
-			return 0;
-		else
-			break;
+		else if(ret <= 0)
+			return ret;
 
 		urlsize -= ret;
 		retsize += ret;
@@ -248,17 +248,17 @@ int server_to_route(int srvfd, int uhfd)
 	while(1) {
 		memset(urlmsg, '\0', sizeof(urlmsg));
 		if((ret = pc_read(srvfd, urlmsg)) <= 0)
-			return -1;
+			return ret;
 
 		if(strcmp(urlmsg, "end\r\n") == 0)
 			break;
 
 		/* write to uhttpd */
 		if((ret = write(uhfd, urlmsg, ret)) <= 0)
-			return -2;
+			return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 int route_to_server(int srvfd, int uhfd)
@@ -295,7 +295,7 @@ int route_to_server(int srvfd, int uhfd)
 
 	/* write back to server */
 	if((ret = http_write(srvfd, urlmsg, retsize)) <= 0)
-		return -1;
+		return ret;
 
 	/* server close mean end */
 	while(1) {
@@ -315,14 +315,14 @@ int route_to_server(int srvfd, int uhfd)
 
 		/* write back to server */
 		if((ret = http_write(srvfd, urlmsg, ret)) <= 0)
-			return -1;
+			return ret;
 	}
 
 	printf("read-len = %d\n\n", retsize);
 
 	/* send end msg */
 	if((ret = http_write(srvfd, "end\r\n", strlen("end\r\n"))) <= 0)
-		return -1;
+		return ret;
 
-	return 0;
+	return retsize;
 }

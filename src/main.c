@@ -41,7 +41,7 @@ int main(void)
 		memset(sendmsg, 0, BUFSIZE);
 		sprintf(sendmsg, "%s\r\n",
 			fcontrol.mac);
-		if (write(srvfd, sendmsg, sizeof(sendmsg)) < 0) {
+		if (write(srvfd, sendmsg, sizeof(sendmsg)) <= 0) {
 			close(srvfd);
 			continue;
 		}
@@ -55,12 +55,12 @@ int main(void)
 
 			/* read from server, write to route */
 			ret = server_to_route(srvfd, uhfd);
-			if(ret < 0)
+			if(ret <= 0)
 				break;
 
 			/* read from route, write to server */
 			ret = route_to_server(srvfd, uhfd);
-			if(ret < 0)
+			if(ret <= 0)
 				break;
 
 			close(uhfd);
