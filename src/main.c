@@ -2,8 +2,8 @@
 
 
 Fcontrol fcontrol = {
-	//.srvIp   = "192.168.3.254",
-	.srvIp   = "192.168.0.130",
+	.srvIp   = "203.195.154.171",
+	//.srvIp   = "192.168.0.130",
 	.srvPort = 9999,
 	.macName = "eth1",
 
@@ -29,6 +29,7 @@ int main(void)
 		/* create socket */
 		srvfd = sock_client(fcontrol.srvIp, fcontrol.srvPort);
 	    if (srvfd < 0) {
+			printf("connect to server failed!!! wait 10s ...\n");
 	        sleep(10);		// 10s connect again
 	        continue;
 	    }
