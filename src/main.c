@@ -29,12 +29,12 @@ int main(void)
 		/* create socket */
 		srvfd = sock_client(fcontrol.srvIp, fcontrol.srvPort);
 	    if (srvfd < 0) {
-			printf("connect to server failed!!! wait 10s ...\n");
+			DEBUG_PRINT("connect to server failed!!! wait 10s ...\n");
 	        sleep(10);		// 10s connect again
 	        continue;
 	    }
 
-		printf("connect ok~~~~\n");
+		DEBUG_PRINT("connect ok~~~~\n");
 
 /*########## send message first #############*/
 		getlocalmac();

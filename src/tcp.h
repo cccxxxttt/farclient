@@ -19,6 +19,13 @@
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
+#define DEBUG
+#ifdef DEBUG
+	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
+#else
+	#define DEBUG_PRINT(format, ...)
+#endif
+
 typedef struct fcon {
 	char srvIp[17];		// server ip
 	int srvPort;		// server port

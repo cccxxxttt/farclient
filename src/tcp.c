@@ -97,7 +97,7 @@ ssize_t http_write(int fd, char buf[], size_t count)
 	if(ret <= 0)
 		return ret;
 
-	//printf("write-len = %d\n", strlen(buf));
+	//DEBUG_PRINT("write-len = %d\n", strlen(buf));
 
 	return ret;
 }
@@ -221,15 +221,7 @@ ssize_t pc_read(int fd, char buf[])
 
   		if(ret > 0) {
 			// don't use strcat and strncpy, because sometimes jgp etc msg has '\0'
-			if(ret == strlen(temp))
-				strcat(buf, temp);
-			else {
-				int i = 0;
-				while(i < ret) {
-					*(buf+retsize+i) = temp[i];
-					i++;
-				}
-			}
+			memcpy(buf+retsize, temp, ret);
 		}
 		else if(ret <= 0)
 			return ret;
@@ -245,10 +237,16 @@ ssize_t pc_read(int fd, char buf[])
 				while(*(p++) != '\n');		// zhu: post data don't has  \r\n
 				*p = '\0';
 
-				printf("pc-%d:  %s", fd, temp);
+				DEBUG_PRINT("pc-%d:  %s", fd, temp);
 			}
 
 			firstFlag = 1;
+
+			#if 0
+			p = strstr(temp, "POST");
+			if(p != NULL)
+				bin_flag = 1;
+			#endif
 		}
 #endif
 	}
@@ -266,7 +264,7 @@ int server_to_route(int srvfd, int uhfd)
 		if((ret = pc_read(srvfd, urlmsg)) <= 0)
 			return ret;
 
-		printf("pc-%d-%d\n", srvfd, ret);
+		DEBUG_PRINT("pc-%d-%d-%d\n", srvfd, ret, strlen(urlmsg));
 
 		if(strcmp(urlmsg, "end\r\n") == 0)
 			break;
@@ -285,7 +283,7 @@ int server_to_route(int srvfd, int uhfd)
 		if((ret = write(uhfd, urlmsg, ret)) <= 0)
 			return ret;
 	}
-	printf("pc-end\n");
+	DEBUG_PRINT("pc-end\n");
 	return ret;
 }
 
@@ -306,7 +304,7 @@ int route_to_server(int srvfd, int uhfd)
 		strcat(urlmsg, lineBuf);
 		retsize += ret;
 
-		printf("route-%d:  %s", uhfd, urlmsg);
+		DEBUG_PRINT("route-%d:  %s", uhfd, urlmsg);
 #endif
 
 	while(1) {
@@ -321,7 +319,7 @@ int route_to_server(int srvfd, int uhfd)
 		if(strcmp(lineBuf, "\r\n") == 0)		// head end
 			break;
 	}
-	//printf("route-%d:  %s", uhfd, urlmsg);
+	//DEBUG_PRINT("route-%d:  %s", uhfd, urlmsg);
 	/* write back to server */
 	if((ret = http_write(srvfd, urlmsg, retsize)) <= 0)
 		return ret;
@@ -337,17 +335,17 @@ int route_to_server(int srvfd, int uhfd)
 
 		retsize += ret;
 
-		printf("route-%d-%d\n", ret, strlen(urlmsg));
+		DEBUG_PRINT("route-%d-%d\n", ret, strlen(urlmsg));
 		if(ret != strlen(urlmsg))
-			printf("urlmsg=%s\n", urlmsg);
-		//printf("\nread urlmsg-%d=%s\n", ret, urlmsg);
+			DEBUG_PRINT("urlmsg=%s\n", urlmsg);
+		//DEBUG_PRINT("\nread urlmsg-%d=%s\n", ret, urlmsg);
 
 		/* write back to server */
 		if((ret = http_write(srvfd, urlmsg, ret)) <= 0)
 			return ret;
 	}
 
-	printf("read-end-%d\n\n", retsize);
+	DEBUG_PRINT("read-end-%d\n\n", retsize);
 
 	/* send end msg */
 	if((ret = http_write(srvfd, "end\r\n", strlen("end\r\n"))) <= 0)
