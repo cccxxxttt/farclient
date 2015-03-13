@@ -2,7 +2,7 @@
 
 
 extern Fcontrol fcontrol;
-char uhIp[17];
+char uhIp[16];
 int bin_flag = 0;
 
 void getlocalip(void)
@@ -310,7 +310,7 @@ int route_to_server(int srvfd, int uhfd)
 	while(1) {
 		ret = read_line(uhfd, lineBuf);
 		if(ret < 0)
-			return -1;
+			return ret;
 		else
 			strcat(urlmsg, lineBuf);
 

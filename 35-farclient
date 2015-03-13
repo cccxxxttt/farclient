@@ -1,0 +1,6 @@
+#!/bin/sh
+
+[ "$ACTION" = ifup ] || exit 0
+
+killall -9 farclient
+/sbin/farclient &

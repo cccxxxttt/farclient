@@ -1,5 +1,9 @@
 #include "tcp.h"
 
+#define IPPATH		"/etc/config/serverip.conf"
+#define PORTPATH	"/etc/config/serverport.conf"
+#define MSGFILE		"/tmp/faclient_log"
+
 
 Fcontrol fcontrol = {
 	.srvIp   = "203.195.154.171",
@@ -11,10 +15,79 @@ Fcontrol fcontrol = {
 	.uhport  = 80,
 };
 
-extern char uhIp[17];
+extern char uhIp[16];
 extern int ALARM_WAKEUP;
+extern int config_read(char buf[], char *path);
+extern int main_farclient(void);
 
 int main(void)
+{
+	pid_t pid;
+
+	while(1) {
+		/* program auto reboot */
+		pid = fork();
+
+		if(pid > 0)
+			pid = wait(NULL);
+		else if(pid == 0) {
+			main_farclient();
+		}
+	}
+
+	return 0;
+}
+
+int config_read(char buf[], char *path)
+{
+	FILE *fp;
+
+	fp = fopen(path, "r");
+	if(fp == NULL)
+		return -1;
+
+	fread(buf, 1024, 1, fp);
+	fclose(fp);
+
+	/* read one line end of '\n' */
+	if(buf[strlen(buf) -1] == '\n')
+		buf[strlen(buf) -1] = '\0';
+
+	return strlen(buf);
+}
+
+void get_config()
+{
+	int ret;
+	char buf[1024];
+
+	/* get server ip and port */
+	memset(buf, '\0', 1024);
+	ret = config_read(buf, IPPATH);
+	if(ret > 0) {
+		strcpy(fcontrol.srvIp, buf);
+	}
+
+	memset(buf, '\0', 1024);
+	ret = config_read(buf, PORTPATH);
+	if(ret > 0) {
+		fcontrol.srvPort = atoi(buf);
+	}
+
+#if 1
+	//printf("Farclient: ip=%s, port=%d\n", fcontrol.srvIp, fcontrol.srvPort);
+	FILE *fp;
+
+	sprintf(buf, "Farclient: ip=%s, port=%d\n", fcontrol.srvIp, fcontrol.srvPort);
+	fp = fopen(MSGFILE, "w");
+	if(fp != NULL) {
+		fwrite(buf, 1024, 1, fp);
+		fclose(fp);
+	}
+#endif
+}
+
+int main_farclient(void)
 {
 	int srvfd;
 	int ret;
@@ -26,6 +99,8 @@ int main(void)
 	/* while(1) : reconnection */
 	while(1)
 	{
+		get_config();
+
 		/* create socket */
 		srvfd = sock_client(fcontrol.srvIp, fcontrol.srvPort);
 	    if (srvfd < 0) {

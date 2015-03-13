@@ -31,6 +31,9 @@ endef
 define Package/farclient/install
 	$(INSTALL_DIR) $(1)/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/farclient $(1)/sbin/
+
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./35-farclient $(1)/etc/hotplug.d/iface/35-farclient
 endef
 
 $(eval $(call BuildPackage,farclient))

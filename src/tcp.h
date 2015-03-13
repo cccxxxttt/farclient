@@ -13,13 +13,14 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/wait.h>
 
 
 #define TCPSIZE 65535
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
 #else
@@ -27,7 +28,7 @@
 #endif
 
 typedef struct fcon {
-	char srvIp[17];		// server ip
+	char srvIp[16];		// server ip
 	int srvPort;		// server port
 	char macName[6];
 	char mac[17];
