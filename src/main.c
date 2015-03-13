@@ -92,6 +92,7 @@ int main_farclient(void)
 	int srvfd;
 	int ret;
 	char sendmsg[BUFSIZE];
+	char urlmsg[TCPSIZE];
 	int uhfd = -1;
 
 	getlocalip();
@@ -124,10 +125,21 @@ int main_farclient(void)
 /*########## end #############*/
 
 		while(1) {
+			/* read pc first, afraid uhttpd connect timeout close */
+			memset(urlmsg, '\0', sizeof(urlmsg));
+			if((ret = pc_read(srvfd, urlmsg)) <= 0)
+				return ret;
+
+			DEBUG_PRINT("pc-%d-%d-%d\n", srvfd, ret, strlen(urlmsg));
+
 			/* connect uhttpd */
 			uhfd = sock_client(uhIp, fcontrol.uhport);
 			if(uhfd < 0)
 				continue;
+
+			/* write to uhttpd */
+			if((ret = write(uhfd, urlmsg, ret)) <= 0)
+				return ret;
 
 			/* read from server, write to route */
 			ret = server_to_route(srvfd, uhfd);
