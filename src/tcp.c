@@ -2,10 +2,9 @@
 
 
 extern Fcontrol fcontrol;
-char uhIp[16];
 int bin_flag = 0;
 
-void getlocalip(void)
+int getlocalip(char *uhip)
 {
     int sfd, intr;
     struct ifreq buf[16];
@@ -14,12 +13,12 @@ void getlocalip(void)
 
     sfd = socket (AF_INET, SOCK_DGRAM, 0);
     if (sfd < 0)
-        return ;
+        return -1;
 
     ifc.ifc_len = sizeof(buf);
     ifc.ifc_buf = (caddr_t)buf;
     if (ioctl(sfd, SIOCGIFCONF, (char *)&ifc))
-        return ;
+        return -1;
 
     intr = ifc.ifc_len / sizeof(struct ifreq);
     while (intr-- > 0 && ioctl(sfd, SIOCGIFADDR, (char *)&buf[intr]));
@@ -27,31 +26,96 @@ void getlocalip(void)
     close(sfd);
 
     ip = inet_ntoa(((struct sockaddr_in*)(&buf[intr].ifr_addr))->sin_addr);
-	strcpy(uhIp, ip);
+
+	strcpy(uhip, ip);
+
+	return 0;
 }
 
-int getlocalmac(void)
+int getIfaceName(char *iface_name)
+{
+    int r = -1;
+    int flgs, ref, use, metric, mtu, win, ir;
+    unsigned long int d, g, m;
+    char devname[20];
+    FILE *fp = NULL;
+
+    if((fp = fopen("/proc/net/route", "r")) == NULL) {
+        perror("fopen error!\n");
+        return -1;
+    }
+
+    if (fscanf(fp, "%*[^\n]\n") < 0) {
+        fclose(fp);
+        return -1;
+    }
+
+    while (1) {
+        r = fscanf(fp, "%19s%lx%lx%X%d%d%d%lx%d%d%d\n",
+                 devname, &d, &g, &flgs, &ref, &use,
+                 &metric, &m, &mtu, &win, &ir);
+        if (r != 11) {
+            if ((r < 0) && feof(fp)) {
+                break;
+            }
+            continue;
+        }
+
+        strcpy(iface_name, devname);
+        fclose(fp);
+        return 0;
+    }
+
+    fclose(fp);
+
+    return -1;
+}
+
+int getlocalmac(char *iface_mac, char *iface_name)
 {
 	struct ifreq ifreq;
 	int sock;
+	char buf[17];
 
     if((sock=socket(AF_INET,SOCK_STREAM,0)) <0)
     {
 
     }
 
-	strcpy(ifreq.ifr_name, fcontrol.macName);
+	strcpy(ifreq.ifr_name, iface_name);
 	if(ioctl(sock,SIOCGIFHWADDR,&ifreq) <0) {
 
 	}
 
-	sprintf(fcontrol.mac, "%02x:%02x:%02x:%02x:%02x:%02x",
+	sprintf(iface_mac, "%02x:%02x:%02x:%02x:%02x:%02x",
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[0],
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[1],
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[2],
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[3],
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[4],
         (unsigned   char)ifreq.ifr_hwaddr.sa_data[5]);
+
+	return 0;
+}
+
+int getUhttpdPort(int *uhttpd_port)
+{
+	FILE *fp;
+	char buf[3];
+
+	char *cmd = "uci get uhttpd.main.listen_http | awk -F ':' '{print $5}'";
+	fp = popen(cmd, "r");
+	if(fp == NULL)
+		return -1;
+
+	while(fgets(buf, 1024, fp) != NULL) {
+		buf[3] = '\0';
+		*uhttpd_port = atoi(buf);
+
+		//printf("buf=%s, uhport=%d\n", buf, *uhttpd_port);
+	}
+
+	pclose(fp);
 
 	return 0;
 }
@@ -124,6 +188,26 @@ int sock_client(char *ip, int port)
 	}
 
 	return cfd;
+}
+
+int uhttpd_connect(char *ip, int port)
+{
+	int uhfd;
+	int count = 0;
+
+	while(1) {
+		uhfd = sock_client(ip, port);
+
+		if(uhfd > 0)
+			break;
+
+		// uhfd < 0
+		count++;
+		if(count > 10)
+			break;
+	}
+
+	return uhfd;
 }
 
 

@@ -20,7 +20,7 @@
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
-//#define DEBUG
+#define DEBUG
 #ifdef DEBUG
 	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
 #else
@@ -31,17 +31,20 @@ typedef struct fcon {
 	char srvIp[16];		// server ip
 	int srvPort;		// server port
 	char macName[6];
-	char mac[17];
+	char mac[18];
 
-	char uhtIp[17];		// uhttpd ip
+	char uhIp[16];		// uhttpd ip
 	int uhport;			// uhttpd port
 }Fcontrol;
 
-void getlocalip(void);
-int getlocalmac(void);
+int getlocalip();
+int getIfaceName(char *iface_name);
+int getlocalmac(char *iface_mac, char *iface_name);
+int getUhttpdPort(int *uhttpd_port);
 ssize_t http_read(int fd, char buf[], size_t count);
 ssize_t http_write(int fd, char buf[], size_t count);
 int sock_client(char *ip, int port);
+int uhttpd_connect(char *ip, int port);
 int response_close(char urlmsg[]);
 void modify_connect_close(char urlmsg[]);
 void modify_http_head(char urlmsg[]);

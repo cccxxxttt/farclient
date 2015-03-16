@@ -9,13 +9,11 @@ Fcontrol fcontrol = {
 	.srvIp   = "203.195.154.171",
 	//.srvIp   = "192.168.0.130",
 	.srvPort = 9999,
-	.macName = "eth1",
 
 	//.uhport  = 52360,
 	.uhport  = 80,
 };
 
-extern char uhIp[16];
 extern int ALARM_WAKEUP;
 extern int config_read(char buf[], char *path);
 extern int main_farclient(void);
@@ -61,6 +59,11 @@ void get_config()
 	int ret;
 	char buf[1024];
 
+	getlocalip(fcontrol.uhIp);
+	getIfaceName(fcontrol.macName);
+	getlocalmac(fcontrol.mac, fcontrol.macName);
+	getUhttpdPort(&fcontrol.uhport);
+
 	/* get server ip and port */
 	memset(buf, '\0', 1024);
 	ret = config_read(buf, IPPATH);
@@ -75,10 +78,14 @@ void get_config()
 	}
 
 #if 1
-	//printf("Farclient: ip=%s, port=%d\n", fcontrol.srvIp, fcontrol.srvPort);
+//	printf("Farclient: ip=%s, port=%d, macName=%s, mac=%s, uhip=%s, uhport=%d\n",
+//		fcontrol.srvIp, fcontrol.srvPort, fcontrol.macName, fcontrol.mac,
+//		fcontrol.uhIp, fcontrol.uhport);
 	FILE *fp;
 
-	sprintf(buf, "Farclient: ip=%s, port=%d\n", fcontrol.srvIp, fcontrol.srvPort);
+	sprintf(buf, "Farclient: ip=%s, port=%d, macName=%s, mac=%s, uhip=%s, uhport=%d\n",
+		fcontrol.srvIp, fcontrol.srvPort, fcontrol.macName, fcontrol.mac,
+		fcontrol.uhIp, fcontrol.uhport);
 	fp = fopen(MSGFILE, "w");
 	if(fp != NULL) {
 		fwrite(buf, 1024, 1, fp);
@@ -94,8 +101,6 @@ int main_farclient(void)
 	char sendmsg[BUFSIZE];
 	char urlmsg[TCPSIZE];
 	int uhfd = -1;
-
-	getlocalip();
 
 	/* while(1) : reconnection */
 	while(1)
@@ -113,8 +118,6 @@ int main_farclient(void)
 		DEBUG_PRINT("connect ok~~~~\n");
 
 /*########## send message first #############*/
-		getlocalmac();
-
 		memset(sendmsg, 0, BUFSIZE);
 		sprintf(sendmsg, "%s\r\n",
 			fcontrol.mac);
@@ -128,18 +131,18 @@ int main_farclient(void)
 			/* read pc first, afraid uhttpd connect timeout close */
 			memset(urlmsg, '\0', sizeof(urlmsg));
 			if((ret = pc_read(srvfd, urlmsg)) <= 0)
-				return ret;
+				break;
 
 			DEBUG_PRINT("pc-%d-%d-%d\n", srvfd, ret, strlen(urlmsg));
 
 			/* connect uhttpd */
-			uhfd = sock_client(uhIp, fcontrol.uhport);
+			uhfd = uhttpd_connect(fcontrol.uhIp, fcontrol.uhport);
 			if(uhfd < 0)
-				continue;
+				break;
 
 			/* write to uhttpd */
 			if((ret = write(uhfd, urlmsg, ret)) <= 0)
-				return ret;
+				break;
 
 			/* read from server, write to route */
 			ret = server_to_route(srvfd, uhfd);
@@ -153,6 +156,9 @@ int main_farclient(void)
 
 			close(uhfd);
 		}
+
+		close(uhfd);
+		close(srvfd);
 	}
 
 	return 0;
