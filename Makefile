@@ -34,6 +34,7 @@ define Package/farclient/install
 
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_BIN) ./35-farclient $(1)/etc/hotplug.d/iface/35-farclient
+	$(INSTALL_BIN) ./getUhttpdPort.sh $(1)/sbin/getUhttpdPort.sh
 endef
 
 $(eval $(call BuildPackage,farclient))

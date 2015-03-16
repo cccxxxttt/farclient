@@ -101,15 +101,21 @@ int getlocalmac(char *iface_mac, char *iface_name)
 int getUhttpdPort(int *uhttpd_port)
 {
 	FILE *fp;
-	char buf[3];
+	char buf[10];
 
-	char *cmd = "uci get uhttpd.main.listen_http | awk -F ':' '{print $5}'";
+	char *cmd = "chmod 777 /sbin/getUhttpdPort.sh";
 	fp = popen(cmd, "r");
 	if(fp == NULL)
 		return -1;
 
+	cmd = "/sbin/getUhttpdPort.sh";
+	fp = popen(cmd, "r");
+	if(fp == NULL)
+		return -1;
+
+	*uhttpd_port = 0;
 	while(fgets(buf, 1024, fp) != NULL) {
-		buf[3] = '\0';
+		buf[strlen(buf)] = '\0';
 		*uhttpd_port = atoi(buf);
 
 		//printf("buf=%s, uhport=%d\n", buf, *uhttpd_port);
