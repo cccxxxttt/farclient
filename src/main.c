@@ -99,8 +99,8 @@ int main_farclient(void)
 	int srvfd;
 	int ret;
 	char sendmsg[BUFSIZE];
-	char urlmsg[TCPSIZE];
 	int uhfd = -1;
+	int time = 0;
 
 	/* while(1) : reconnection */
 	while(1)
@@ -115,7 +115,7 @@ int main_farclient(void)
 	        continue;
 	    }
 
-		DEBUG_PRINT("connect ok~~~~\n");
+		DEBUG_PRINT("connect ok - %d~~~~\n", srvfd);
 
 /*########## send message first #############*/
 		memset(sendmsg, 0, BUFSIZE);
@@ -128,20 +128,16 @@ int main_farclient(void)
 /*########## end #############*/
 
 		while(1) {
-			/* read pc first, afraid uhttpd connect timeout close */
-			memset(urlmsg, '\0', sizeof(urlmsg));
-			if((ret = pc_read(srvfd, urlmsg)) <= 0)
+			DEBUG_PRINT("\n@@start~~~\n");
+			/* read start msg, check timeout to keep tcp alive */
+			time = 15*60;	// 15*60 s
+			ret = pc_start_ping(srvfd, time);
+			if(ret < 0)
 				break;
-
-			DEBUG_PRINT("pc-%d-%d-%d\n", srvfd, ret, strlen(urlmsg));
 
 			/* connect uhttpd */
 			uhfd = uhttpd_connect(fcontrol.uhIp, fcontrol.uhport);
 			if(uhfd < 0)
-				break;
-
-			/* write to uhttpd */
-			if((ret = write(uhfd, urlmsg, ret)) <= 0)
 				break;
 
 			/* read from server, write to route */
@@ -155,10 +151,18 @@ int main_farclient(void)
 				break;
 
 			close(uhfd);
+
+			DEBUG_PRINT("@@end~~~\n");
 		}
 
-		close(uhfd);
-		close(srvfd);
+		if(uhfd > 2)
+			close(uhfd);
+		if(srvfd > 2){
+ 			// a tcp connect close, 4 shake hands in TIME_WAIT,
+			// socket while use util 2 min
+			close(srvfd);
+		}
+		//sleep(2);	// let server socket all close
 	}
 
 	return 0;

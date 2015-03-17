@@ -20,7 +20,7 @@
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
 #else
@@ -46,6 +46,7 @@ ssize_t http_write(int fd, char buf[], size_t count);
 int sock_client(char *ip, int port);
 int uhttpd_connect(char *ip, int port);
 int response_close(char urlmsg[]);
+int pc_start_ping(int fd, int wait_seconds);
 void modify_connect_close(char urlmsg[]);
 void modify_http_head(char urlmsg[]);
 

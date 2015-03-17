@@ -75,7 +75,6 @@ int getlocalmac(char *iface_mac, char *iface_name)
 {
 	struct ifreq ifreq;
 	int sock;
-	char buf[17];
 
     if((sock=socket(AF_INET,SOCK_STREAM,0)) <0)
     {
@@ -107,8 +106,9 @@ int getUhttpdPort(int *uhttpd_port)
 	fp = popen(cmd, "r");
 	if(fp == NULL)
 		return -1;
+	pclose(fp);
 
-	cmd = "/sbin/getUhttpdPort.sh";
+	cmd = "sh /sbin/getUhttpdPort.sh";
 	fp = popen(cmd, "r");
 	if(fp == NULL)
 		return -1;
@@ -217,12 +217,11 @@ int uhttpd_connect(char *ip, int port)
 }
 
 
-int ALARM_WAKEUP = 1;
+int ALARM_WAKEUP = 0;
 void timeout_handler(int signo)
 {
 	if(signo == SIGALRM)
-		if(ALARM_WAKEUP == 2)
-			ALARM_WAKEUP = 0;
+		ALARM_WAKEUP = 1;
 }
 
 /* analyse response url data, judge connect */
@@ -275,6 +274,39 @@ int response_close(char urlmsg[])
 }
 #endif
 
+
+/* like tcp ping, keep tcp alive */
+int pc_start_ping(int fd, int wait_seconds)
+{
+	int ret = 0;
+	char buf[10];
+	fd_set fds;
+	struct timeval timeout;
+
+	if(wait_seconds > 0) {
+		FD_ZERO(&fds);
+		FD_SET(fd, &fds);
+
+		timeout.tv_sec = wait_seconds;
+		timeout.tv_usec = 0;
+
+		do {
+			ret = select(fd+1, &fds, NULL, NULL, &timeout);
+		}while(ret<0 && errno==EINTR);
+
+		if(ret > 0) {
+			/* ping: read "start\r\n" */
+			ret = read(fd, buf, strlen("start\r\n"));
+			if(ret>0 && strncmp(buf, "start\r\n", ret)==0) {
+				return ret;		// success
+			}
+			else
+				return -1;
+		}
+	}
+
+	return -1;		// faile
+}
 
 ssize_t pc_read(int fd, char buf[])
 {
