@@ -128,17 +128,19 @@ int main_farclient(void)
 /*########## end #############*/
 
 		while(1) {
-			DEBUG_PRINT("\n@@start~~~\n");
+
 			/* read start msg, check timeout to keep tcp alive */
-			time = 15*60;	// 15*60 s
-			ret = pc_start_ping(srvfd, time);
-			if(ret < 0)
-				break;
+//			time = 15*60;	// 15*60 s
+//			ret = pc_start_ping(srvfd, time);
+//			if(ret < 0)
+//				break;
 
 			/* connect uhttpd */
 			uhfd = uhttpd_connect(fcontrol.uhIp, fcontrol.uhport);
 			if(uhfd < 0)
 				break;
+
+			DEBUG_PRINT("\n@@start~~~\n");
 
 			/* read from server, write to route */
 			ret = server_to_route(srvfd, uhfd);

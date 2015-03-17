@@ -20,7 +20,7 @@
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
-//#define DEBUG
+#define DEBUG
 #ifdef DEBUG
 	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
 #else
