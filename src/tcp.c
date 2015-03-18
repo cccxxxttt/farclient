@@ -1,5 +1,15 @@
-#include "tcp.h"
+/********************************************************************\
+ *                                                                  *
+ * $Id$                                                             *
+ * @file tcp.c                                                      *
+ * @brief tcp functions                                             *
+ * @author Copyright (C) 2015 cxt <xiaotaohuoxiao@163.com>          *
+ * @start 2015-2-28                                                 *
+ * @end   2015-3-18                                                 *
+ *                                                                  *
+\********************************************************************/
 
+#include "tcp.h"
 
 extern Fcontrol fcontrol;
 int bin_flag = 0;
@@ -173,6 +183,31 @@ ssize_t http_write(int fd, char buf[], size_t count)
 }
 
 
+/* socket set keepalive, timeout can set tcp stat, write() and read() return 0 */
+int socket_set_keepalive(int fd, int idle, int intv, int cnt)
+{
+	int alive;
+
+	/* Set: use keepalive on fd */
+	alive = 1;
+	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &alive, sizeof alive) != 0)
+		return -1;
+
+	/* idle秒钟无数据，触发保活机制，发送保活包 */
+	if(setsockopt (fd, SOL_TCP, TCP_KEEPIDLE, &idle, sizeof idle) != 0)
+		return -1;
+
+	/* 如果没有收到回应，则intv秒钟后重发保活包 */
+	if (setsockopt (fd, SOL_TCP, TCP_KEEPINTVL, &intv, sizeof intv) != 0)
+		return -1;
+
+	/* 连续cnt次没收到保活包，视为连接失效 */
+	if (setsockopt (fd, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof cnt) != 0)
+		return -1;
+
+	return 1;
+}
+
 int sock_client(char *ip, int port)
 {
 	int cfd;
@@ -192,6 +227,10 @@ int sock_client(char *ip, int port)
 	if (connect(cfd, (struct sockaddr *)&des_addr, sizeof(struct sockaddr)) < 0) {
 		return -1;
 	}
+
+	// keep_alive check time: (60+5)*3
+	if(socket_set_keepalive(cfd, 60, 5, 3) < 0)
+		return -1;
 
 	return cfd;
 }
@@ -216,96 +255,25 @@ int uhttpd_connect(char *ip, int port)
 	return uhfd;
 }
 
-
-int ALARM_WAKEUP = 0;
-void timeout_handler(int signo)
+/* when one socket close, write twice takes a SIGPIPE, exit progrem */
+void protect_progrem(void)
 {
-	if(signo == SIGALRM)
-		ALARM_WAKEUP = 1;
+	signal(SIGPIPE, SIG_IGN);
 }
-
-/* analyse response url data, judge connect */
-#if 0
-int response_close(char urlmsg[])
-{
-	char *p = NULL, *q = NULL;
-	int ret = 0, i;
-	char buf[BUFSIZE];
-	char timebuf[5];
-	int time;
-
-	p = strstr(urlmsg, "Connection:");
-	if(p != NULL) {
-		/* get line --  Connection: .....*/
-		q = p;
-		i = 0;
-		while(*(q) != '\n') {
-			buf[i++] = *q;
-			q++;
-		}
-		buf[i] = '\0';
-
-		p = strstr(buf, "close");
-		if(p != NULL)
-			ret = CONCLOSE;
-	}
-
-	/* timeout */
-	p = strstr(urlmsg, "Keep-Alive:");
-	if(p != NULL) {
-		p = strstr(p, "timeout");
-		if(p != NULL) {
-			while(*(p++) != '=');	// drop '='
-
-			i = 0;
-			while(*p != '\n')
-				timebuf[i++] = *(p++);
-			timebuf[i] = '\0';
-
-			time = atoi(timebuf);
-
-			/* set a alarm */
-			signal(SIGALRM, timeout_handler);
-			alarm(time);
-		}
-	}
-
-	return ret;
-}
-#endif
-
 
 /* like tcp ping, keep tcp alive */
-int pc_start_ping(int fd, int wait_seconds)
+int pc_start(int fd)
 {
 	int ret = 0;
 	char buf[10];
-	fd_set fds;
-	struct timeval timeout;
 
-	if(wait_seconds > 0) {
-		FD_ZERO(&fds);
-		FD_SET(fd, &fds);
-
-		timeout.tv_sec = wait_seconds;
-		timeout.tv_usec = 0;
-
-		do {
-			ret = select(fd+1, &fds, NULL, NULL, &timeout);
-		}while(ret<0 && errno==EINTR);
-
-		if(ret > 0) {
-			/* ping: read "start\r\n" */
-			ret = read(fd, buf, strlen("start\r\n"));
-			if(ret>0 && strncmp(buf, "start\r\n", ret)==0) {
-				return ret;		// success
-			}
-			else
-				return -1;
-		}
+	/* ping: read "start\r\n" */
+	ret = read(fd, buf, strlen("start\r\n"));
+	if(ret>0 && strncmp(buf, "start\r\n", ret)==0) {
+		return ret;		// success
 	}
-
-	return -1;		// faile
+	else
+		return PC_MSG_ERR;	// faile
 }
 
 ssize_t pc_read(int fd, char buf[])
@@ -384,7 +352,7 @@ int server_to_route(int srvfd, int uhfd)
 	while(1) {
 		memset(urlmsg, '\0', sizeof(urlmsg));
 		if((ret = pc_read(srvfd, urlmsg)) <= 0)
-			return ret;
+			return PC_MSG_ERR;
 
 		DEBUG_PRINT("pc-%d-%d-%d\n", srvfd, ret, strlen(urlmsg));
 
@@ -403,10 +371,10 @@ int server_to_route(int srvfd, int uhfd)
 
 		/* write to uhttpd */
 		if((ret = write(uhfd, urlmsg, ret)) <= 0)
-			return ret;
+			return UH_MSG_ERR;
 	}
 	DEBUG_PRINT("pc-end\n");
-	return ret;
+	return OK_MSG;
 }
 
 int route_to_server(int srvfd, int uhfd)
@@ -421,7 +389,7 @@ int route_to_server(int srvfd, int uhfd)
 		/* debug use */
 		ret = read_line(uhfd, lineBuf);
 		if(ret <= 0)
-			return ret;
+			return UH_MSG_ERR;
 
 		strcat(urlmsg, lineBuf);
 		retsize += ret;
@@ -432,7 +400,7 @@ int route_to_server(int srvfd, int uhfd)
 	while(1) {
 		ret = read_line(uhfd, lineBuf);
 		if(ret < 0)
-			return ret;
+			return UH_MSG_ERR;
 		else
 			strcat(urlmsg, lineBuf);
 
@@ -444,7 +412,7 @@ int route_to_server(int srvfd, int uhfd)
 	//DEBUG_PRINT("route-%d:  %s", uhfd, urlmsg);
 	/* write back to server */
 	if((ret = http_write(srvfd, urlmsg, retsize)) <= 0)
-		return ret;
+		return PC_MSG_ERR;
 
 	/* server close mean end */
 	while(1) {
@@ -458,20 +426,17 @@ int route_to_server(int srvfd, int uhfd)
 		retsize += ret;
 
 		DEBUG_PRINT("route-%d-%d\n", ret, strlen(urlmsg));
-		if(ret != strlen(urlmsg))
-			DEBUG_PRINT("urlmsg=%s\n", urlmsg);
-		//DEBUG_PRINT("\nread urlmsg-%d=%s\n", ret, urlmsg);
 
 		/* write back to server */
 		if((ret = http_write(srvfd, urlmsg, ret)) <= 0)
-			return ret;
+			return PC_MSG_ERR;
 	}
 
 	DEBUG_PRINT("read-end-%d\n\n", retsize);
 
 	/* send end msg */
 	if((ret = http_write(srvfd, "end\r\n", strlen("end\r\n"))) <= 0)
-		return ret;
+		return PC_MSG_ERR;
 
 	return retsize;
 }

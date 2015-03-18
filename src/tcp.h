@@ -1,3 +1,14 @@
+/********************************************************************\
+ *                                                                  *
+ * $Id$                                                             *
+ * @file tcp.h                                                      *
+ * @brief tcp functions                                             *
+ * @author Copyright (C) 2015 cxt <xiaotaohuoxiao@163.com>          *
+ * @start 2015-2-28                                                 *
+ * @end   2015-3-18                                                 *
+ *                                                                  *
+\********************************************************************/
+
 #ifndef __TCP_H
 #define __TCP_H
 
@@ -6,7 +17,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -20,12 +33,16 @@
 #define BUFSIZE 1024
 #define CONCLOSE 100
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 	#define DEBUG_PRINT(format, ...)	printf(format, ##__VA_ARGS__)
 #else
 	#define DEBUG_PRINT(format, ...)
 #endif
+
+#define PC_MSG_ERR	-100
+#define UH_MSG_ERR	-200
+#define OK_MSG		100
 
 typedef struct fcon {
 	char srvIp[16];		// server ip
@@ -45,8 +62,8 @@ ssize_t http_read(int fd, char buf[], size_t count);
 ssize_t http_write(int fd, char buf[], size_t count);
 int sock_client(char *ip, int port);
 int uhttpd_connect(char *ip, int port);
-int response_close(char urlmsg[]);
-int pc_start_ping(int fd, int wait_seconds);
+void protect_progrem(void);
+int pc_start(int fd);
 void modify_connect_close(char urlmsg[]);
 void modify_http_head(char urlmsg[]);
 

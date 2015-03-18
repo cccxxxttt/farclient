@@ -1,3 +1,14 @@
+/********************************************************************\
+ *                                                                  *
+ * $Id$                                                             *
+ * @file main.c                                                     *
+ * @brief main loop                                                 *
+ * @author Copyright (C) 2015 cxt <xiaotaohuoxiao@163.com>          *
+ * @start 2015-2-28                                                 *
+ * @end   2015-3-18                                                 *
+ *                                                                  *
+\********************************************************************/
+
 #include "tcp.h"
 
 #define IPPATH		"/etc/config/serverip.conf"
@@ -100,7 +111,8 @@ int main_farclient(void)
 	int ret;
 	char sendmsg[BUFSIZE];
 	int uhfd = -1;
-	int time = 0;
+
+	protect_progrem();
 
 	/* while(1) : reconnection */
 	while(1)
@@ -128,19 +140,15 @@ int main_farclient(void)
 /*########## end #############*/
 
 		while(1) {
-
 			/* read start msg, check timeout to keep tcp alive */
-//			time = 15*60;	// 15*60 s
-//			ret = pc_start_ping(srvfd, time);
-//			if(ret < 0)
-//				break;
+			ret = pc_start(srvfd);
+			if(ret < 0)
+				break;
 
 			/* connect uhttpd */
 			uhfd = uhttpd_connect(fcontrol.uhIp, fcontrol.uhport);
 			if(uhfd < 0)
 				break;
-
-			DEBUG_PRINT("\n@@start~~~\n");
 
 			/* read from server, write to route */
 			ret = server_to_route(srvfd, uhfd);
@@ -153,18 +161,15 @@ int main_farclient(void)
 				break;
 
 			close(uhfd);
-
-			DEBUG_PRINT("@@end~~~\n");
 		}
 
+		DEBUG_PRINT("errno = %d\n", ret);
 		if(uhfd > 2)
 			close(uhfd);
 		if(srvfd > 2){
- 			// a tcp connect close, 4 shake hands in TIME_WAIT,
-			// socket while use util 2 min
 			close(srvfd);
 		}
-		//sleep(2);	// let server socket all close
+		sleep(2);	// let server socket all close
 	}
 
 	return 0;
