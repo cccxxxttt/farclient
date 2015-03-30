@@ -1,0 +1,26 @@
+#!/bin/sh
+
+echo "Content-type: text/html"
+echo ""
+echo "<html>"
+
+# get url param and change '&' to ' '
+LINE=`echo $QUERY_STRING | sed 's/&/ /g'` 
+
+for loop in $LINE
+do
+	# get name and value
+	name=`echo $loop | awk -F "=" '{print $1}'`
+	value=`echo $loop | awk -F "=" '{print $2}'`
+
+	if [ $name = "mac" ]; then
+		ret=`wdctl reset $value`
+		if [ -z `echo $ret | grep 'was not active'` ]; then
+			echo "ok"
+		else
+			echo "mac not found"
+		fi
+	fi
+done
+
+echo "</html>"
